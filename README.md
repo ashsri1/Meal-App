@@ -1,6 +1,6 @@
-# dropdown
+# Meal App
 
-Dropdown
+Meal App
 
 ## Getting Started
 
