@@ -19,7 +19,7 @@ class Suggestion {
 
   factory Suggestion.fromJson(Map<String, dynamic> json) => Suggestion(
     id: json["id"],
-    name: json["name"],
+    name: json["name"] as String,
   );
 
   Map<String, dynamic> toJson() => {

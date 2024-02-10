@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:auto_size_text/auto_size_text.dart';
+
 import 'package:autocomplete_textfield/autocomplete_textfield.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:http/http.dart' as http;
 
 import 'model.dart';
@@ -14,14 +15,54 @@ class DropdownEff extends StatefulWidget {
   State<DropdownEff> createState() => _DropdownEffState();
 }
 
-Future<List<Suggestion>> getData() async {
-  final response =
-      await http.get(Uri.parse('http://10.0.2.2:8080/api/suggest'));
+Future<List<Suggestion>> getData(int page, int size) async {
+  final response = await http
+      .get(Uri.parse('http://10.0.2.2:8080/api/suggest?page=0 & size=38'));
   if (response.statusCode == 200) {
-    var data = jsonDecode(response.body) as List<dynamic>;
-    return data.map((json) => Suggestion.fromJson(json)).toList();
+    var data = jsonDecode(response.body);
+    print(data['content']);
+
+    List<Suggestion> result = data['content']
+        .map((json) => Suggestion.fromJson(json))
+        .toList()
+        .cast<Suggestion>();
+    return result;
   } else {
     throw Exception('Failed to load data');
+  }
+}
+
+Future<void> postData({
+  required String date,
+  required String dropdownValue,
+  required String searchData,
+}) async {
+  const apiUrl = 'http://10.0.2.2:8080/api/mealdata';
+
+  final Map<String, dynamic> data = {
+    'date': date,
+    'dropdownValue': dropdownValue,
+    'searchData': searchData,
+  };
+
+  try {
+    final response = await http.post(
+      Uri.parse(apiUrl),
+      body: jsonEncode(data),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      // Successfully posted data
+      print('Data submitted successfully');
+      // You can add further handling based on your API response
+    } else {
+      // Handle error or unsuccessful response
+      print('Error submitting data. Status code: ${response.statusCode}');
+    }
+  } catch (e) {
+    // Handle exceptions
+    print('Exception occurred: $e');
   }
 }
 
@@ -30,7 +71,7 @@ class _DropdownEffState extends State<DropdownEff> {
   String selectedIcon = "";
   TextEditingController textEditingController = TextEditingController();
   GlobalKey<AutoCompleteTextFieldState<String>> key = GlobalKey();
-
+  final TextEditingController _dateContoller = TextEditingController();
   List<Suggestion> suggestions = [];
 
   List<DropdownMenuItem<String>> get dropdownItems {
@@ -43,6 +84,9 @@ class _DropdownEffState extends State<DropdownEff> {
     return menuItems;
   }
 
+  int currpage = 0;
+  int pagesize = 38;
+  bool isloadingMore = false;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -58,8 +102,32 @@ class _DropdownEffState extends State<DropdownEff> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const SizedBox(
-            height: 50,
+            height: 2,
           ),
+          const SizedBox(height: 2),
+          // Add the TextField in the center of the screen
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 100),
+              child: TextField(
+                controller: _dateContoller,
+                decoration: InputDecoration(
+                  labelText: 'Date...',
+                  filled: true,
+                  prefixIcon: const Icon(Icons.calendar_today),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  contentPadding: const EdgeInsets.all(15),
+                ),
+                readOnly: true,
+                onTap: () {
+                  selectDate();
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
           Padding(
             padding: const EdgeInsets.only(left: 100, right: 100),
             child: InputDecorator(
@@ -92,9 +160,9 @@ class _DropdownEffState extends State<DropdownEff> {
             ),
           ),
           const SizedBox(
-            height: 50,
+            height: 2,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 2),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -135,9 +203,11 @@ class _DropdownEffState extends State<DropdownEff> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+
+          const SizedBox(height: 3),
+
           FutureBuilder<List<Suggestion>>(
-            future: getData(),
+            future: getData(0, 10),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const CircularProgressIndicator();
@@ -145,40 +215,45 @@ class _DropdownEffState extends State<DropdownEff> {
                 return Text('Error: ${snapshot.error}');
               } else if (snapshot.hasData) {
                 suggestions = snapshot.data!;
+                print("Suggestions: $suggestions");
+
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: AutoCompleteTextField(
-                    key: key,
-                    controller: textEditingController,
-                    suggestions: suggestions
-                        .map((suggestion) => suggestion.name)
-                        .toList(),
-                    clearOnSubmit: false,
-                    decoration: InputDecoration(
-                      labelText: 'Search...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      contentPadding: const EdgeInsets.all(15),
-                    ),
-                    itemFilter: (suggestions, query) {
-                      return suggestions
-                          .toLowerCase()
-                          .startsWith(query.toLowerCase());
-                    },
-                    itemSorter: (a, b) {
-                      return a.compareTo(b);
-                    },
-                    itemSubmitted: (suggestions) {
-                      setState(() {
-                        textEditingController.text = suggestions;
-                      });
-                    },
-                    itemBuilder: (context, suggestions) {
-                      return Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: AutoSizeText(suggestions),
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: TypeAheadField<Suggestion>(
+                    builder: (
+                      context,
+                      controller,
+                      focusnode,
+                    ) {
+                      return TextField(
+                        controller: textEditingController,
+                        focusNode: focusnode,
+                        decoration: InputDecoration(
+                          labelText: 'Search...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          contentPadding: const EdgeInsets.all(15),
+                        ),
                       );
+                    },
+                    suggestionsCallback: (pattern) async {
+                      final filteredSuggestions = suggestions
+                          .where((suggestion) => suggestion.name
+                              .toLowerCase()
+                              .startsWith(pattern.toLowerCase()))
+                          .toList();
+                      return filteredSuggestions;
+                    },
+                    itemBuilder: (context, Suggestion suggestion) {
+                      return ListTile(
+                        title: Text(suggestion.name),
+                      );
+                    },
+                    onSelected: (suggestion) {
+                      setState(() {
+                        textEditingController.text = suggestion.name;
+                      });
                     },
                   ),
                 );
@@ -187,9 +262,35 @@ class _DropdownEffState extends State<DropdownEff> {
               }
             },
           ),
+
+          const SizedBox(height: 2),
+          ElevatedButton(
+            onPressed: () {
+              postData(
+                date: _dateContoller.text,
+                dropdownValue: selectedValue,
+                searchData: textEditingController.text,
+              );
+            },
+            child: const Text('Submit'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> selectDate() async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _dateContoller.text = picked.toString().split(" ")[0];
+      });
+    }
   }
 
   Widget _buildIconButton({
@@ -249,6 +350,20 @@ class _DropdownEffState extends State<DropdownEff> {
         selectedIcon = "Dinner";
         break;
     }
+  }
+
+  Future<void> loadMoreData() async {
+    setState(() {
+      isloadingMore = true;
+    });
+
+    List<Suggestion> moreData = await getData(currpage + 1, pagesize);
+
+    setState(() {
+      suggestions.addAll(moreData);
+      currpage++;
+      isloadingMore = false;
+    });
   }
 }
 
